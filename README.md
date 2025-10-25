@@ -1,1 +1,1 @@
-# Sistema-de-Reserva-de-Telesc-pio
+# Sistema-de-Reserva-de-Telescopio
