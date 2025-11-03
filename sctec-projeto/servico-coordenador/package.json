@@ -1,0 +1,12 @@
+{
+  "name": "servico-coordenador",
+  "version": "1.0.0",
+  "description": "Serviço de lock (Porteiro) para o projeto SCTEC",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
