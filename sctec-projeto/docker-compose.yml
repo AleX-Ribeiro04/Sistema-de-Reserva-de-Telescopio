@@ -1,0 +1,30 @@
+# Versão do Docker Compose
+version: '3.8'
+
+# Define os nossos dois serviços
+services:
+  
+  # Serviço 1: O "Cérebro" (Flask)
+  servico-agendamento:
+    build: 
+      # Aponta para a pasta com o Dockerfile do Flask [cite: 308]
+      context: ./servico-agendamento
+    ports:
+      # Mapeia a porta 5000 do contêiner para a porta 5000 da sua máquina
+      - "5000:5000"
+    volumes:
+      # Garante que o banco de dados SQLite seja salvo na sua máquina real
+      # (dentro de servico-agendamento/instance) e não seja perdido.
+      - ./servico-agendamento/instance:/app/instance
+    depends_on:
+      # Diz ao Docker para esperar o coordenador ficar pronto antes de iniciar
+      - servico-coordenador
+
+  # Serviço 2: O "Porteiro" (Node.js)
+  servico-coordenador:
+    build:
+      # Aponta para a pasta com o Dockerfile do Node.js [cite: 309]
+      context: ./servico-coordenador
+    ports:
+      # Mapeia a porta 3000 (para debug, se precisarmos)
+      - "3000:3000"

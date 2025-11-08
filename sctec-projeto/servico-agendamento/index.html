@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCTEC - Cliente Inteligente (Etapa 4)</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f4; }
+        h1, h2 { color: #333; }
+        #sincronizacao, #agendamentos { background: #fff; border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; }
+        #lista-agendamentos li { margin-bottom: 10px; padding: 10px; border-bottom: 1px solid #eee; }
+        #lista-agendamentos button { margin-left: 15px; background: #d9534f; color: white; border: none; padding: 5px 10px; cursor: pointer; }
+        #lista-agendamentos button:hover { background: #c9302c; }
+    </style>
+</head>
+<body>
+    <h1>Cliente Inteligente SCTEC (Etapa 4)</h1>
+
+    <div id="sincronizacao">
+        <h2>Sincronização de Relógio</h2>
+        <p>Hora Local (Cliente): <strong id="hora-local"></strong></p>
+        <p>Hora Oficial (Servidor): <strong id="hora-servidor"></strong></p>
+        <p>Diferença (Offset): <strong id="offset-tempo"></strong> ms</p>
+    </div>
+
+    <div id="agendamentos">
+        <h2>Agendamentos Ativos</h2>
+        <button id="btn-atualizar">Atualizar Lista de Agendamentos</button>
+        <ul id="lista-agendamentos">
+            </ul>
+    </div>
+
+    <script>
+        // Variável global para guardar o offset do tempo
+        let serverTimeOffset = 0;
+
+        /**
+         * ETAPA 4: Sincronização de Relógio
+         * Calcula a diferença entre o relógio do servidor e o relógio local.
+         */
+        async function sincronizarRelogio() {
+            try {
+                const inicioRequest = Date.now(); // 1. Hora local antes do request
+                
+                const response = await fetch('/time');
+                if (!response.ok) throw new Error('Falha ao buscar /time');
+                
+                const data = await response.json();
+                
+                const fimRequest = Date.now(); // 2. Hora local depois do request
+                const latencia = (fimRequest - inicioRequest) / 2; // 3. Estima a latência
+                
+                const horaServidor = new Date(data.server_time_utc).getTime(); // 4. Hora oficial do servidor
+                
+                // 5. Ajusta a hora do servidor com a latência
+                const horaServidorAjustada = horaServidor + latencia; 
+                
+                // 6. Calcula a diferença (offset)
+                serverTimeOffset = horaServidorAjustada - fimRequest;
+
+                // Atualiza a interface
+                document.getElementById('hora-local').textContent = new Date(fimRequest).toISOString();
+                document.getElementById('hora-servidor').textContent = data.server_time_utc;
+                document.getElementById('offset-tempo').textContent = Math.round(serverTimeOffset);
+
+                console.log(`Relógio sincronizado. Offset: ${serverTimeOffset} ms`);
+
+            } catch (error) {
+                console.error("Erro ao sincronizar relógio:", error);
+                document.getElementById('offset-tempo').textContent = "Falha na sincronização";
+            }
+        }
+
+        /**
+         * ETAPA 4: HATEOAS
+         * Busca agendamentos e cria a lista dinamicamente, lendo os links HATEOAS.
+         */
+        async function buscarAgendamentos() {
+            const listaUI = document.getElementById('lista-agendamentos');
+            listaUI.innerHTML = '<li>Carregando...</li>';
+
+            try {
+                const response = await fetch('/agendamentos');
+                if (!response.ok) throw new Error('Falha ao buscar /agendamentos');
+
+                const data = await response.json();
+                listaUI.innerHTML = ''; // Limpa a lista
+
+                if (data.agendamentos.length === 0) {
+                    listaUI.innerHTML = '<li>Nenhum agendamento confirmado encontrado.</li>';
+                    return;
+                }
+
+                data.agendamentos.forEach(ag => {
+                    const item = document.createElement('li');
+                    
+                    // Exibe os dados do agendamento
+                    item.innerHTML = `
+                        <strong>ID: ${ag.id}</strong> (${ag.objeto_observacao || 'Sem objeto'})
+                        <br>
+                        Início: ${ag.horario_inicio_utc}
+                    `;
+
+                    // ---- A MÁGICA DO HATEOAS ACONTECE AQUI ----
+                    // Verificamos se a API nos enviou um link de "cancelar"
+                    if (ag._links && ag._links.cancelar) {
+                        const linkCancelar = ag._links.cancelar;
+                        
+                        // Criamos o botão dinamicamente
+                        const btnCancelar = document.createElement('button');
+                        btnCancelar.textContent = 'Cancelar (via HATEOAS)';
+                        
+                        // O botão usa a URL e o Método que a API enviou
+                        btnCancelar.onclick = () => {
+                            cancelarAgendamento(linkCancelar.href, linkCancelar.method);
+                        };
+                        
+                        item.appendChild(btnCancelar);
+                    }
+                    // Se a API não enviar o link, o botão simplesmente não é criado.
+                    // O cliente não precisa saber a URL /cancelar.
+
+                    listaUI.appendChild(item);
+                });
+
+            } catch (error) {
+                console.error("Erro ao buscar agendamentos:", error);
+                listaUI.innerHTML = `<li>Erro ao carregar: ${error.message}</li>`;
+            }
+        }
+
+        /**
+         * ETAPA 4: Ação de Cancelamento
+         * Executa o cancelamento usando a URL e o Método fornecidos pelo HATEOAS.
+         */
+        async function cancelarAgendamento(url, method) {
+            if (!confirm(`Tem certeza que deseja cancelar este agendamento?\nURL: ${url}`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(url, { method: method });
+                
+                if (!response.ok) {
+                    const erro = await response.json();
+                    throw new Error(erro.error || 'Falha ao cancelar');
+                }
+
+                console.log("Agendamento cancelado com sucesso!");
+                alert("Agendamento cancelado!");
+                
+                // Atualiza a lista automaticamente
+                buscarAgendamentos();
+
+            } catch (error) {
+                console.error("Erro ao cancelar:", error);
+                alert(`Erro ao cancelar: ${error.message}`);
+            }
+        }
+
+        // --- Inicialização ---
+        
+        // Listener do botão de atualizar
+        document.getElementById('btn-atualizar').onclick = buscarAgendamentos;
+
+        // Ao carregar a página:
+        // 1. Sincroniza o relógio
+        // 2. Busca os agendamentos
+        window.onload = () => {
+            sincronizarRelogio();
+            buscarAgendamentos();
+        };
+    </script>
+</body>
+</html>
